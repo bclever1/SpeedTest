@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 import './App.css'
 
-const UI_VERSION = '2.1.0'
+const UI_VERSION = '2.2.0'
 
 interface TestResult {
   id: number
@@ -16,6 +16,7 @@ interface TestResult {
   serverName: string
   serverLocation: string
   resultUrl: string
+  suspect: boolean
 }
 
 interface Stats {
@@ -233,7 +234,7 @@ function App() {
             </thead>
             <tbody>
               {results.map(r => (
-                <tr key={r.id}>
+                <tr key={r.id} className={r.suspect ? 'suspect-row' : ''}>
                   <td>
                     <div>{formatDate(r.timestamp)}</div>
                     <div className="time-sub">{formatTime(r.timestamp)}</div>

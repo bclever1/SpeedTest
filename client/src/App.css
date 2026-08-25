@@ -256,6 +256,15 @@ header h1 {
   font-size: 13px;
 }
 
+.suspect-row {
+  opacity: 0.4;
+}
+
+.suspect-row td:first-child::before {
+  content: '⚠ ';
+  color: #f59e0b;
+}
+
 .empty {
   text-align: center;
   color: #475569;

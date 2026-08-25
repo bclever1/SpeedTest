@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using SpeedTest.Api;
 
-var Version = "2.1.0";
+var Version = "2.2.0";
+
+const double MaxPingMs = 200;
+const double MaxPacketLoss = 2;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,26 +35,40 @@ app.UseStaticFiles();
 app.MapGet("/api/results", async (AppDbContext db, int? days) =>
 {
     var since = DateTime.UtcNow.AddDays(-(days ?? 7));
-    return await db.SpeedTestResults
+    var results = await db.SpeedTestResults
         .Where(r => r.Timestamp >= since)
         .OrderByDescending(r => r.Timestamp)
         .ToListAsync();
+
+    return results.Select(r => new
+    {
+        r.Id, r.Timestamp, r.DownloadMbps, r.UploadMbps,
+        r.PingMs, r.Jitter, r.PacketLoss, r.Isp,
+        r.ServerName, r.ServerLocation, r.ResultUrl,
+        suspect = r.PingMs > MaxPingMs || r.PacketLoss > MaxPacketLoss
+    });
 });
 
 // --- Get summary stats ---
 app.MapGet("/api/stats", async (AppDbContext db, int? days) =>
 {
     var since = DateTime.UtcNow.AddDays(-(days ?? 7));
-    var results = await db.SpeedTestResults
+    var all = await db.SpeedTestResults
         .Where(r => r.Timestamp >= since)
         .ToListAsync();
 
+    var results = all
+        .Where(r => r.PingMs <= MaxPingMs && r.PacketLoss <= MaxPacketLoss)
+        .ToList();
+
     if (results.Count == 0)
-        return Results.Ok(new { count = 0 });
+        return Results.Ok(new { count = 0, totalCount = all.Count, excluded = all.Count });
 
     return Results.Ok(new
     {
         count = results.Count,
+        totalCount = all.Count,
+        excluded = all.Count - results.Count,
         download = new
         {
             avg = Math.Round(results.Average(r => r.DownloadMbps), 2),
