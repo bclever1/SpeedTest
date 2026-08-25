@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 import './App.css'
 
-const UI_VERSION = '2.2.0'
+const UI_VERSION = '2.2.1'
 
 interface TestResult {
   id: number
@@ -167,10 +167,11 @@ function App() {
                   fontSize: '13px',
                 }}
                 labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                formatter={(value: number, name: string) => [
-                  `${value} Mbps`,
-                  name === 'downloadMbps' ? 'Download' : name === 'uploadMbps' ? 'Upload' : name
-                ]}
+                formatter={(value: number, name: string, props: { payload: TestResult }) => {
+                  if (name === 'downloadMbps') return [`${value} Mbps`, 'Download']
+                  if (name === 'uploadMbps') return [`${value} Mbps  |  Ping: ${props.payload.pingMs} ms`, 'Upload']
+                  return [`${value}`, name]
+                }}
               />
               <Legend
                 formatter={(value) =>
@@ -243,7 +244,9 @@ function App() {
                     {r.downloadMbps} Mbps
                   </td>
                   <td>{r.uploadMbps} Mbps</td>
-                  <td>{r.pingMs} ms</td>
+                  <td className={r.pingMs > 200 ? 'bad-value' : r.pingMs > 100 ? 'warn-value' : ''}>
+                    {r.pingMs} ms
+                  </td>
                   <td className="server-cell">
                     {r.serverName}
                     <div className="time-sub">{r.serverLocation}</div>

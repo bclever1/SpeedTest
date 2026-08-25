@@ -247,6 +247,11 @@ header h1 {
   color: #22c55e;
 }
 
+.warn-value {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
 .time-sub {
   font-size: 11px;
   color: #475569;
