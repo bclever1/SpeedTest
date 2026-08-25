@@ -167,12 +167,18 @@ function App() {
                   fontSize: '13px',
                 }}
                 labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                formatter={(value: number, name: string, props: { payload: TestResult }) => {
-                  const ping = props.payload.pingMs
-                  const pingColor = ping > 200 ? '#ef4444' : ping > 100 ? '#f59e0b' : '#94a3b8'
-                  if (name === 'downloadMbps') return [`${value} Mbps`, 'Download']
-                  if (name === 'uploadMbps') return [<>{value} Mbps  |  <span style={{ color: pingColor }}>Ping: {ping} ms</span></>, 'Upload']
-                  return [`${value}`, name]
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  const data = payload[0].payload as TestResult
+                  const pingColor = data.pingMs > 200 ? '#ef4444' : data.pingMs > 100 ? '#f59e0b' : '#94a3b8'
+                  return (
+                    <div style={{ backgroundColor: '#131926', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e2e8f0' }}>
+                      <div style={{ color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+                      <div><span style={{ color: '#3b82f6' }}>Download:</span> {data.downloadMbps} Mbps</div>
+                      <div><span style={{ color: '#22c55e' }}>Upload:</span> {data.uploadMbps} Mbps</div>
+                      <div><span style={{ color: pingColor }}>Ping: {data.pingMs} ms</span></div>
+                    </div>
+                  )
                 }}
               />
               <Legend
