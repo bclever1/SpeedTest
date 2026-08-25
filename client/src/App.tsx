@@ -168,8 +168,10 @@ function App() {
                 }}
                 labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
                 formatter={(value: number, name: string, props: { payload: TestResult }) => {
+                  const ping = props.payload.pingMs
+                  const pingColor = ping > 200 ? '#ef4444' : ping > 100 ? '#f59e0b' : '#94a3b8'
                   if (name === 'downloadMbps') return [`${value} Mbps`, 'Download']
-                  if (name === 'uploadMbps') return [`${value} Mbps  |  Ping: ${props.payload.pingMs} ms`, 'Upload']
+                  if (name === 'uploadMbps') return [<>{value} Mbps  |  <span style={{ color: pingColor }}>Ping: {ping} ms</span></>, 'Upload']
                   return [`${value}`, name]
                 }}
               />
