@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SpeedTest.Api;
 
-var Version = "2.0.0";
+var Version = "2.1.0";
 
 var builder = WebApplication.CreateBuilder(args);
 

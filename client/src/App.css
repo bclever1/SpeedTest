@@ -167,52 +167,8 @@ header h1 {
   margin-bottom: 16px;
 }
 
-.chart-container {
-  display: flex;
-  gap: 8px;
-}
-
-.chart-y-axis {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #475569;
-  min-width: 30px;
-  text-align: right;
-  height: 200px;
-}
-
-.chart {
-  flex: 1;
-  height: 200px;
-  position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background:
-    repeating-linear-gradient(0deg, transparent, transparent 99px, #1e293b 99px, #1e293b 100px);
-}
-
-.chart-svg {
-  height: 100%;
-  min-width: 100%;
-}
-
-.chart-promise-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: 1px dashed rgba(239, 68, 68, 0.5);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.chart-promise-line span {
-  position: absolute;
-  right: 4px;
-  top: -16px;
-  font-size: 10px;
-  color: rgba(239, 68, 68, 0.6);
+.recharts-legend-item-text {
+  color: #94a3b8 !important;
 }
 
 /* Range selector */

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 import './App.css'
 
-const UI_VERSION = '2.0.0'
+const UI_VERSION = '2.1.0'
 
 interface TestResult {
   id: number
@@ -30,7 +31,6 @@ function App() {
   const [stats, setStats] = useState<Stats>({ count: 0 })
   const [days, setDays] = useState(7)
   const [running, setRunning] = useState(false)
-  const [chartHeight] = useState(200)
 
   const fetchData = useCallback(async () => {
     const [resultsRes, statsRes] = await Promise.all([
@@ -67,10 +67,14 @@ function App() {
     return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   }
 
-  // Chart data — show last N points reversed so oldest is on the left
-  const chartData = [...results].reverse()
-  const maxDown = Math.max(...chartData.map(r => r.downloadMbps), 1)
-  const chartMax = Math.ceil(maxDown / 50) * 50 || 100
+  const chartData = [...results].reverse().map(r => {
+    const d = new Date(r.timestamp + 'Z')
+    return {
+      ...r,
+      label: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+    }
+  })
 
   return (
     <div className="app">
@@ -133,43 +137,70 @@ function App() {
         </div>
       )}
 
-      {/* Download speed chart */}
+      {/* Speed chart */}
       {chartData.length > 1 && (
         <div className="chart-panel">
-          <h2>Download Speed Over Time</h2>
-          <div className="chart-container">
-            <div className="chart-y-axis">
-              <span>{chartMax}</span>
-              <span>{Math.round(chartMax / 2)}</span>
-              <span>0</span>
-            </div>
-            <div className="chart">
-              <div className="chart-promise-line" style={{ bottom: `${(100 / chartMax) * chartHeight}px` }}>
-                <span>100 Mbps promised</span>
-              </div>
-              <svg viewBox={`0 0 ${chartData.length * 20} ${chartHeight}`} preserveAspectRatio="none" className="chart-svg">
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  points={chartData.map((r, i) =>
-                    `${i * 20 + 10},${chartHeight - (r.downloadMbps / chartMax) * chartHeight}`
-                  ).join(' ')}
-                />
-                {chartData.map((r, i) => (
-                  <circle
-                    key={i}
-                    cx={i * 20 + 10}
-                    cy={chartHeight - (r.downloadMbps / chartMax) * chartHeight}
-                    r="3"
-                    fill="#3b82f6"
-                  >
-                    <title>{`${formatDate(r.timestamp)} ${formatTime(r.timestamp)}: ${r.downloadMbps} Mbps`}</title>
-                  </circle>
-                ))}
-              </svg>
-            </div>
-          </div>
+          <h2>Speed Over Time</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: '#475569', fontSize: 11 }}
+                tickLine={{ stroke: '#1e293b' }}
+                axisLine={{ stroke: '#1e293b' }}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fill: '#475569', fontSize: 12 }}
+                tickLine={{ stroke: '#1e293b' }}
+                axisLine={{ stroke: '#1e293b' }}
+                unit=" Mbps"
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#131926',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  color: '#e2e8f0',
+                  fontSize: '13px',
+                }}
+                labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                formatter={(value: number, name: string) => [
+                  `${value} Mbps`,
+                  name === 'downloadMbps' ? 'Download' : name === 'uploadMbps' ? 'Upload' : name
+                ]}
+              />
+              <Legend
+                formatter={(value) =>
+                  value === 'downloadMbps' ? 'Download' : value === 'uploadMbps' ? 'Upload' : value
+                }
+                wrapperStyle={{ fontSize: '13px', color: '#94a3b8' }}
+              />
+              <ReferenceLine
+                y={100}
+                stroke="#ef4444"
+                strokeDasharray="6 4"
+                label={{ value: '100 Mbps promised', fill: 'rgba(239,68,68,0.6)', fontSize: 11, position: 'right' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="downloadMbps"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ fill: '#3b82f6', r: 3 }}
+                activeDot={{ r: 5, stroke: '#60a5fa', strokeWidth: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="uploadMbps"
+                stroke="#22c55e"
+                strokeWidth={2}
+                dot={{ fill: '#22c55e', r: 2 }}
+                activeDot={{ r: 4, stroke: '#4ade80', strokeWidth: 2 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       )}
 
