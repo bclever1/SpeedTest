@@ -1,157 +1,221 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
-const UI_VERSION = '1.0.0'
-
-type TestPhase = 'idle' | 'ping' | 'download' | 'upload' | 'done'
+const UI_VERSION = '2.0.0'
 
 interface TestResult {
-  ping: number
-  download: number
-  upload: number
+  id: number
+  timestamp: string
+  downloadMbps: number
+  uploadMbps: number
+  pingMs: number
+  jitter: number
+  packetLoss: number
+  isp: string
+  serverName: string
+  serverLocation: string
+  resultUrl: string
+}
+
+interface Stats {
+  count: number
+  download?: { avg: number; min: number; max: number; median: number }
+  upload?: { avg: number; min: number; max: number; median: number }
+  ping?: { avg: number; min: number; max: number }
+  isp?: string
 }
 
 function App() {
-  const [phase, setPhase] = useState<TestPhase>('idle')
-  const [result, setResult] = useState<TestResult>({ ping: 0, download: 0, upload: 0 })
-  const [progress, setProgress] = useState(0)
-  const [history, setHistory] = useState<(TestResult & { timestamp: Date })[]>([])
+  const [results, setResults] = useState<TestResult[]>([])
+  const [stats, setStats] = useState<Stats>({ count: 0 })
+  const [days, setDays] = useState(7)
+  const [running, setRunning] = useState(false)
+  const [chartHeight] = useState(200)
 
-  const runTest = useCallback(async () => {
-    setPhase('ping')
-    setProgress(0)
-    const newResult: TestResult = { ping: 0, download: 0, upload: 0 }
+  const fetchData = useCallback(async () => {
+    const [resultsRes, statsRes] = await Promise.all([
+      fetch(`/api/results?days=${days}`),
+      fetch(`/api/stats?days=${days}`)
+    ])
+    setResults(await resultsRes.json())
+    setStats(await statsRes.json())
+  }, [days])
 
-    // --- Ping (median of 5) ---
-    const pings: number[] = []
-    for (let i = 0; i < 5; i++) {
-      const start = performance.now()
-      await fetch('/api/ping')
-      pings.push(performance.now() - start)
-      setProgress((i + 1) / 5 * 100)
-    }
-    newResult.ping = Math.round(pings.sort((a, b) => a - b)[2])
-    setResult({ ...newResult })
+  useEffect(() => {
+    fetchData()
+    const interval = setInterval(fetchData, 60000)
+    return () => clearInterval(interval)
+  }, [fetchData])
 
-    // --- Download (progressive chunks) ---
-    setPhase('download')
-    setProgress(0)
-    const downloadSizes = [2_000_000, 5_000_000, 10_000_000, 25_000_000]
-    let bestDown = 0
-
-    for (let i = 0; i < downloadSizes.length; i++) {
-      const size = downloadSizes[i]
-      const start = performance.now()
-      const resp = await fetch(`/api/download?size=${size}`)
-      const blob = await resp.blob()
-      const elapsed = (performance.now() - start) / 1000
-      const mbps = (blob.size * 8 / 1_000_000) / elapsed
-      if (mbps > bestDown) bestDown = mbps
-      newResult.download = Math.round(bestDown * 100) / 100
-      setResult({ ...newResult })
-      setProgress((i + 1) / downloadSizes.length * 100)
-    }
-
-    // --- Upload (progressive chunks) ---
-    setPhase('upload')
-    setProgress(0)
-    const uploadSizes = [2_000_000, 5_000_000, 10_000_000, 25_000_000]
-    let bestUp = 0
-
-    for (let i = 0; i < uploadSizes.length; i++) {
-      const size = uploadSizes[i]
-      const data = new Uint8Array(size)
-      crypto.getRandomValues(data)
-      const start = performance.now()
-      await fetch('/api/upload', {
-        method: 'POST',
-        body: data,
-      })
-      const elapsed = (performance.now() - start) / 1000
-      const mbps = (size * 8 / 1_000_000) / elapsed
-      if (mbps > bestUp) bestUp = mbps
-      newResult.upload = Math.round(bestUp * 100) / 100
-      setResult({ ...newResult })
-      setProgress((i + 1) / uploadSizes.length * 100)
-    }
-
-    setPhase('done')
-    setProgress(100)
-    setHistory(prev => [{ ...newResult, timestamp: new Date() }, ...prev].slice(0, 10))
-  }, [])
-
-  const getPhaseLabel = () => {
-    switch (phase) {
-      case 'ping': return 'Testing Latency...'
-      case 'download': return 'Testing Download...'
-      case 'upload': return 'Testing Upload...'
-      case 'done': return 'Test Complete'
-      default: return 'Ready'
+  const runManualTest = async () => {
+    setRunning(true)
+    try {
+      await fetch('/api/test', { method: 'POST' })
+      await fetchData()
+    } finally {
+      setRunning(false)
     }
   }
+
+  const formatDate = (ts: string) => {
+    const d = new Date(ts + 'Z')
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  const formatTime = (ts: string) => {
+    const d = new Date(ts + 'Z')
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  }
+
+  // Chart data — show last N points reversed so oldest is on the left
+  const chartData = [...results].reverse()
+  const maxDown = Math.max(...chartData.map(r => r.downloadMbps), 1)
+  const chartMax = Math.ceil(maxDown / 50) * 50 || 100
 
   return (
     <div className="app">
       <header>
-        <h1>Speed Test</h1>
-        <span className="version">ui:{UI_VERSION}</span>
+        <div>
+          <h1>ISP Monitor</h1>
+          {stats.isp && <span className="isp">{stats.isp}</span>}
+        </div>
+        <div className="header-right">
+          <span className="version">ui:{UI_VERSION}</span>
+          <button className="run-btn" onClick={runManualTest} disabled={running}>
+            {running ? 'Testing...' : 'Run Test Now'}
+          </button>
+        </div>
       </header>
 
-      <div className="test-panel">
-        <div className="status">{getPhaseLabel()}</div>
-
-        {phase !== 'idle' && (
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
+      {stats.count > 0 && stats.download && stats.upload && stats.ping && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-label">Avg Download</div>
+            <div className="stat-value">{stats.download.avg}</div>
+            <div className="stat-unit">Mbps</div>
+            <div className="stat-range">{stats.download.min} — {stats.download.max}</div>
           </div>
-        )}
-
-        <div className="results">
-          <div className={`metric ${phase === 'ping' ? 'active' : ''}`}>
-            <div className="metric-value">{result.ping}</div>
-            <div className="metric-unit">ms</div>
-            <div className="metric-label">Ping</div>
+          <div className="stat-card">
+            <div className="stat-label">Avg Upload</div>
+            <div className="stat-value">{stats.upload.avg}</div>
+            <div className="stat-unit">Mbps</div>
+            <div className="stat-range">{stats.upload.min} — {stats.upload.max}</div>
           </div>
-          <div className={`metric ${phase === 'download' ? 'active' : ''}`}>
-            <div className="metric-value">{result.download.toFixed(2)}</div>
-            <div className="metric-unit">Mbps</div>
-            <div className="metric-label">Download</div>
+          <div className="stat-card">
+            <div className="stat-label">Avg Ping</div>
+            <div className="stat-value">{stats.ping.avg}</div>
+            <div className="stat-unit">ms</div>
+            <div className="stat-range">{stats.ping.min} — {stats.ping.max}</div>
           </div>
-          <div className={`metric ${phase === 'upload' ? 'active' : ''}`}>
-            <div className="metric-value">{result.upload.toFixed(2)}</div>
-            <div className="metric-unit">Mbps</div>
-            <div className="metric-label">Upload</div>
+          <div className="stat-card">
+            <div className="stat-label">Tests Run</div>
+            <div className="stat-value">{stats.count}</div>
+            <div className="stat-unit">in {days}d</div>
+            <div className="stat-range">median: {stats.download.median} Mbps</div>
           </div>
         </div>
+      )}
 
-        <button
-          className="start-btn"
-          onClick={runTest}
-          disabled={phase !== 'idle' && phase !== 'done'}
-        >
-          {phase === 'idle' ? 'Start Test' : phase === 'done' ? 'Run Again' : 'Testing...'}
-        </button>
+      {/* Promised vs Actual banner */}
+      {stats.count > 0 && stats.download && (
+        <div className={`promise-banner ${stats.download.avg >= 100 ? 'good' : 'bad'}`}>
+          <div className="promise-label">
+            AT&T Promised: <strong>100–300 Mbps</strong>
+          </div>
+          <div className="promise-actual">
+            Your Average: <strong>{stats.download.avg} Mbps</strong>
+            {stats.download.avg < 100 && (
+              <span className="promise-deficit">
+                {' '}({Math.round((1 - stats.download.avg / 100) * 100)}% below minimum)
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Download speed chart */}
+      {chartData.length > 1 && (
+        <div className="chart-panel">
+          <h2>Download Speed Over Time</h2>
+          <div className="chart-container">
+            <div className="chart-y-axis">
+              <span>{chartMax}</span>
+              <span>{Math.round(chartMax / 2)}</span>
+              <span>0</span>
+            </div>
+            <div className="chart">
+              <div className="chart-promise-line" style={{ bottom: `${(100 / chartMax) * chartHeight}px` }}>
+                <span>100 Mbps promised</span>
+              </div>
+              <svg viewBox={`0 0 ${chartData.length * 20} ${chartHeight}`} preserveAspectRatio="none" className="chart-svg">
+                <polyline
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth="2"
+                  points={chartData.map((r, i) =>
+                    `${i * 20 + 10},${chartHeight - (r.downloadMbps / chartMax) * chartHeight}`
+                  ).join(' ')}
+                />
+                {chartData.map((r, i) => (
+                  <circle
+                    key={i}
+                    cx={i * 20 + 10}
+                    cy={chartHeight - (r.downloadMbps / chartMax) * chartHeight}
+                    r="3"
+                    fill="#3b82f6"
+                  >
+                    <title>{`${formatDate(r.timestamp)} ${formatTime(r.timestamp)}: ${r.downloadMbps} Mbps`}</title>
+                  </circle>
+                ))}
+              </svg>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Time range selector */}
+      <div className="range-selector">
+        {[1, 3, 7, 14, 30].map(d => (
+          <button
+            key={d}
+            className={days === d ? 'active' : ''}
+            onClick={() => setDays(d)}
+          >
+            {d}d
+          </button>
+        ))}
       </div>
 
-      {history.length > 0 && (
-        <div className="history">
-          <h2>History</h2>
+      {/* Results table */}
+      {results.length > 0 && (
+        <div className="results-table">
+          <h2>Test Results</h2>
           <table>
             <thead>
               <tr>
                 <th>Time</th>
-                <th>Ping</th>
                 <th>Download</th>
                 <th>Upload</th>
+                <th>Ping</th>
+                <th>Server</th>
               </tr>
             </thead>
             <tbody>
-              {history.map((h, i) => (
-                <tr key={i}>
-                  <td>{h.timestamp.toLocaleTimeString()}</td>
-                  <td>{h.ping} ms</td>
-                  <td>{h.download.toFixed(2)} Mbps</td>
-                  <td>{h.upload.toFixed(2)} Mbps</td>
+              {results.map(r => (
+                <tr key={r.id}>
+                  <td>
+                    <div>{formatDate(r.timestamp)}</div>
+                    <div className="time-sub">{formatTime(r.timestamp)}</div>
+                  </td>
+                  <td className={r.downloadMbps < 100 ? 'bad-value' : 'good-value'}>
+                    {r.downloadMbps} Mbps
+                  </td>
+                  <td>{r.uploadMbps} Mbps</td>
+                  <td>{r.pingMs} ms</td>
+                  <td className="server-cell">
+                    {r.serverName}
+                    <div className="time-sub">{r.serverLocation}</div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -159,9 +223,11 @@ function App() {
         </div>
       )}
 
-      <footer>
-        Server: {window.location.hostname}
-      </footer>
+      {results.length === 0 && (
+        <div className="empty">
+          No test results yet. The first automated test will run shortly, or click "Run Test Now".
+        </div>
+      )}
     </div>
   )
 }
