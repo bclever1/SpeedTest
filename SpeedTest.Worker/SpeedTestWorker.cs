@@ -1,54 +1,68 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
-namespace SpeedTest.Api;
+namespace SpeedTest.Worker;
 
-public class SpeedTestService : BackgroundService
+public class SpeedTestWorker : BackgroundService
 {
-    private readonly IServiceProvider _services;
-    private readonly ILogger<SpeedTestService> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(30);
+    private readonly IHttpClientFactory _httpFactory;
+    private readonly ILogger<SpeedTestWorker> _logger;
+    private readonly IConfiguration _config;
 
-    public SpeedTestService(IServiceProvider services, ILogger<SpeedTestService> logger)
+    public SpeedTestWorker(IHttpClientFactory httpFactory, ILogger<SpeedTestWorker> logger, IConfiguration config)
     {
-        _services = services;
+        _httpFactory = httpFactory;
         _logger = logger;
+        _config = config;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        // Run first test after a short delay
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        var interval = TimeSpan.FromMinutes(_config.GetValue("IntervalMinutes", 30));
+        var apiUrl = _config["CentralApiUrl"] ?? "http://192.168.1.200:5091";
 
-        while (!stoppingToken.IsCancellationRequested)
+        await Task.Delay(TimeSpan.FromSeconds(10), ct);
+
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                _logger.LogInformation("Starting speed test...");
-                var result = await RunSpeedTest(stoppingToken);
+                _logger.LogInformation("Running speed test...");
+                var result = await RunSpeedTest(ct);
                 if (result != null)
                 {
-                    using var scope = _services.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                    db.SpeedTestResults.Add(result);
-                    await db.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("Speed test complete: {Down:.##} Mbps down, {Up:.##} Mbps up, {Ping:.#} ms ping",
-                        result.DownloadMbps, result.UploadMbps, result.PingMs);
+                    var client = _httpFactory.CreateClient();
+                    var json = JsonSerializer.Serialize(result);
+                    var response = await client.PostAsync(
+                        $"{apiUrl}/api/results/submit",
+                        new StringContent(json, Encoding.UTF8, "application/json"),
+                        ct);
+
+                    if (response.IsSuccessStatusCode)
+                        _logger.LogInformation("Result submitted: {Down:.##} Mbps down, {Up:.##} Mbps up, {Ping:.#} ms ping",
+                            result.DownloadMbps, result.UploadMbps, result.PingMs);
+                    else
+                        _logger.LogWarning("Failed to submit result: {Status}", response.StatusCode);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Speed test failed");
+                _logger.LogError(ex, "Speed test cycle failed");
             }
 
-            await Task.Delay(_interval, stoppingToken);
+            await Task.Delay(interval, ct);
         }
     }
 
-    public static async Task<SpeedTestResult?> RunSpeedTest(CancellationToken ct = default)
+    private async Task<SpeedTestDto?> RunSpeedTest(CancellationToken ct)
     {
         var speedtestPath = FindSpeedtest();
-        if (speedtestPath == null) return null;
+        if (speedtestPath == null)
+        {
+            _logger.LogError("speedtest CLI not found");
+            return null;
+        }
 
         var psi = new ProcessStartInfo
         {
@@ -80,10 +94,9 @@ public class SpeedTestService : BackgroundService
         var server = root.GetProperty("server");
         var resultUrl = root.GetProperty("result").GetProperty("url").GetString() ?? "";
 
-        return new SpeedTestResult
+        return new SpeedTestDto
         {
             MachineName = Environment.MachineName,
-            Timestamp = DateTime.UtcNow,
             DownloadMbps = Math.Round(downloadBw * 8 / 1_000_000, 2),
             UploadMbps = Math.Round(uploadBw * 8 / 1_000_000, 2),
             PingMs = Math.Round(ping, 1),
@@ -106,4 +119,18 @@ public class SpeedTestService : BackgroundService
         };
         return candidates.FirstOrDefault(File.Exists);
     }
+}
+
+public class SpeedTestDto
+{
+    public string MachineName { get; set; } = "";
+    public double DownloadMbps { get; set; }
+    public double UploadMbps { get; set; }
+    public double PingMs { get; set; }
+    public double Jitter { get; set; }
+    public double PacketLoss { get; set; }
+    public string Isp { get; set; } = "";
+    public string ServerName { get; set; } = "";
+    public string ServerLocation { get; set; } = "";
+    public string ResultUrl { get; set; } = "";
 }

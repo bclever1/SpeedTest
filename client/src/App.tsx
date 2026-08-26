@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 import './App.css'
 
-const UI_VERSION = '2.2.1'
+const UI_VERSION = '3.0.0'
 
 interface TestResult {
   id: number
@@ -16,6 +16,7 @@ interface TestResult {
   serverName: string
   serverLocation: string
   resultUrl: string
+  machineName: string
   suspect: boolean
 }
 
@@ -32,15 +33,22 @@ function App() {
   const [stats, setStats] = useState<Stats>({ count: 0 })
   const [days, setDays] = useState(7)
   const [running, setRunning] = useState(false)
+  const [machines, setMachines] = useState<string[]>([])
+  const [machine, setMachine] = useState('')
 
   const fetchData = useCallback(async () => {
+    const params = `days=${days}${machine ? `&machine=${machine}` : ''}`
     const [resultsRes, statsRes] = await Promise.all([
-      fetch(`/api/results?days=${days}`),
-      fetch(`/api/stats?days=${days}`)
+      fetch(`/api/results?${params}`),
+      fetch(`/api/stats?${params}`)
     ])
     setResults(await resultsRes.json())
     setStats(await statsRes.json())
-  }, [days])
+  }, [days, machine])
+
+  useEffect(() => {
+    fetch('/api/machines').then(r => r.json()).then(setMachines)
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -91,6 +99,16 @@ function App() {
           </button>
         </div>
       </header>
+
+      {/* Machine filter */}
+      {machines.length > 1 && (
+        <div className="machine-filter">
+          <select value={machine} onChange={e => setMachine(e.target.value)}>
+            <option value="">All Machines</option>
+            {machines.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+      )}
 
       {stats.count > 0 && stats.download && stats.upload && stats.ping && (
         <div className="stats-grid">
@@ -159,14 +177,6 @@ function App() {
                 unit=" Mbps"
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: '#131926',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                  color: '#e2e8f0',
-                  fontSize: '13px',
-                }}
-                labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null
                   const data = payload[0].payload as TestResult
@@ -177,6 +187,7 @@ function App() {
                       <div><span style={{ color: '#3b82f6' }}>Download:</span> {data.downloadMbps} Mbps</div>
                       <div><span style={{ color: '#22c55e' }}>Upload:</span> {data.uploadMbps} Mbps</div>
                       <div><span style={{ color: pingColor }}>Ping: {data.pingMs} ms</span></div>
+                      {!machine && <div style={{ color: '#64748b', marginTop: 4, fontSize: 11 }}>{data.machineName}</div>}
                     </div>
                   )
                 }}
@@ -235,6 +246,7 @@ function App() {
             <thead>
               <tr>
                 <th>Time</th>
+                {!machine && <th>Machine</th>}
                 <th>Download</th>
                 <th>Upload</th>
                 <th>Ping</th>
@@ -248,6 +260,7 @@ function App() {
                     <div>{formatDate(r.timestamp)}</div>
                     <div className="time-sub">{formatTime(r.timestamp)}</div>
                   </td>
+                  {!machine && <td className="machine-cell">{r.machineName}</td>}
                   <td className={r.downloadMbps < 100 ? 'bad-value' : 'good-value'}>
                     {r.downloadMbps} Mbps
                   </td>

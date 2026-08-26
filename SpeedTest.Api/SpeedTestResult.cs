@@ -13,4 +13,5 @@ public class SpeedTestResult
     public string ServerName { get; set; } = "";
     public string ServerLocation { get; set; } = "";
     public string ResultUrl { get; set; } = "";
+    public string MachineName { get; set; } = "";
 }

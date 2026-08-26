@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SpeedTest.Api;
 
-var Version = "2.2.0";
+var Version = "3.0.0";
 
 const double MaxPingMs = 200;
 const double MaxPacketLoss = 2;
@@ -25,6 +25,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    // Add MachineName column if missing (EnsureCreated won't alter existing tables)
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE SpeedTestResults ADD COLUMN MachineName TEXT NOT NULL DEFAULT ''"); }
+    catch { /* column already exists */ }
 }
 
 app.UseCors();
@@ -32,30 +35,33 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // --- Get all results (newest first) ---
-app.MapGet("/api/results", async (AppDbContext db, int? days) =>
+app.MapGet("/api/results", async (AppDbContext db, int? days, string? machine) =>
 {
     var since = DateTime.UtcNow.AddDays(-(days ?? 7));
-    var results = await db.SpeedTestResults
-        .Where(r => r.Timestamp >= since)
-        .OrderByDescending(r => r.Timestamp)
-        .ToListAsync();
+    var query = db.SpeedTestResults.Where(r => r.Timestamp >= since);
+    if (!string.IsNullOrEmpty(machine))
+        query = query.Where(r => r.MachineName == machine);
+
+    var results = await query.OrderByDescending(r => r.Timestamp).ToListAsync();
 
     return results.Select(r => new
     {
         r.Id, r.Timestamp, r.DownloadMbps, r.UploadMbps,
         r.PingMs, r.Jitter, r.PacketLoss, r.Isp,
-        r.ServerName, r.ServerLocation, r.ResultUrl,
+        r.ServerName, r.ServerLocation, r.ResultUrl, r.MachineName,
         suspect = r.PingMs > MaxPingMs || r.PacketLoss > MaxPacketLoss
     });
 });
 
 // --- Get summary stats ---
-app.MapGet("/api/stats", async (AppDbContext db, int? days) =>
+app.MapGet("/api/stats", async (AppDbContext db, int? days, string? machine) =>
 {
     var since = DateTime.UtcNow.AddDays(-(days ?? 7));
-    var all = await db.SpeedTestResults
-        .Where(r => r.Timestamp >= since)
-        .ToListAsync();
+    var query = db.SpeedTestResults.Where(r => r.Timestamp >= since);
+    if (!string.IsNullOrEmpty(machine))
+        query = query.Where(r => r.MachineName == machine);
+
+    var all = await query.ToListAsync();
 
     var results = all
         .Where(r => r.PingMs <= MaxPingMs && r.PacketLoss <= MaxPacketLoss)
@@ -93,6 +99,24 @@ app.MapGet("/api/stats", async (AppDbContext db, int? days) =>
     });
 });
 
+// --- List machines ---
+app.MapGet("/api/machines", async (AppDbContext db) =>
+    await db.SpeedTestResults
+        .Select(r => r.MachineName)
+        .Distinct()
+        .OrderBy(n => n)
+        .ToListAsync());
+
+// --- Submit result from worker ---
+app.MapPost("/api/results/submit", async (AppDbContext db, SpeedTestResult result) =>
+{
+    result.Id = 0;
+    result.Timestamp = DateTime.UtcNow;
+    db.SpeedTestResults.Add(result);
+    await db.SaveChangesAsync();
+    return Results.Ok(result);
+});
+
 // --- Run a test manually ---
 app.MapPost("/api/test", async (AppDbContext db) =>
 {
@@ -100,6 +124,7 @@ app.MapPost("/api/test", async (AppDbContext db) =>
     if (result == null)
         return Results.Problem("Speed test failed — is speedtest CLI installed?");
 
+    result.MachineName = Environment.MachineName;
     db.SpeedTestResults.Add(result);
     await db.SaveChangesAsync();
     return Results.Ok(result);
