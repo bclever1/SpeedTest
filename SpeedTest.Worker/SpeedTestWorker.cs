@@ -68,6 +68,7 @@ public class SpeedTestWorker : BackgroundService
         {
             FileName = speedtestPath,
             Arguments = "--accept-license --accept-gdpr -f json",
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -77,10 +78,19 @@ public class SpeedTestWorker : BackgroundService
         using var proc = Process.Start(psi);
         if (proc == null) return null;
 
+        // Send "Y" to accept license if prompted
+        await proc.StandardInput.WriteLineAsync("Y");
+        proc.StandardInput.Close();
+
         var output = await proc.StandardOutput.ReadToEndAsync(ct);
         await proc.WaitForExitAsync(ct);
 
         if (proc.ExitCode != 0) return null;
+
+        // Extract JSON from output (may contain license text before it)
+        var jsonStart = output.IndexOf('{');
+        if (jsonStart < 0) return null;
+        output = output[jsonStart..];
 
         var json = JsonDocument.Parse(output);
         var root = json.RootElement;
