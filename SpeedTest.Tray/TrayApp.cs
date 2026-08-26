@@ -64,7 +64,7 @@ public class TrayApp : ApplicationContext
 
             if (results.GetArrayLength() == 0)
             {
-                _overlay.Update("--", "--", "--", false);
+                _overlay.Update("--", "--", "--", "--", false);
                 _tray.Text = $"SpeedTest ({_machineName}) — no results yet";
                 return;
             }
@@ -75,10 +75,19 @@ public class TrayApp : ApplicationContext
             var ping = latest.GetProperty("pingMs").GetDouble();
             var ts = DateTime.Parse(latest.GetProperty("timestamp").GetString()!).ToLocalTime();
 
+            // Find lowest download across all results
+            double minDown = down;
+            for (int i = 0; i < results.GetArrayLength(); i++)
+            {
+                var d = results[i].GetProperty("downloadMbps").GetDouble();
+                if (d < minDown) minDown = d;
+            }
+
             _overlay.Update(
                 $"{down:0.#}",
                 $"{up:0.#}",
                 $"{ping:0}",
+                $"{minDown:0.#}",
                 down >= 100);
 
             var text = $"↓ {down} Mbps  ↑ {up} Mbps\n" +
@@ -88,7 +97,7 @@ public class TrayApp : ApplicationContext
         }
         catch
         {
-            _overlay.Update("!", "--", "--", false);
+            _overlay.Update("!", "--", "--", "--", false);
             _tray.Text = "SpeedTest — can't reach API";
         }
     }
@@ -111,6 +120,7 @@ public class SpeedOverlay : Form
     private string _down = "--";
     private string _up = "--";
     private string _ping = "--";
+    private string _low = "--";
     private bool _good;
 
     public SpeedOverlay()
@@ -121,7 +131,7 @@ public class SpeedOverlay : Form
         BackColor = Color.FromArgb(30, 30, 30);
         ForeColor = Color.White;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(140, 40);
+        Size = new Size(140, 52);
         Opacity = 0.9;
 
         PositionOnTaskbar();
@@ -138,11 +148,12 @@ public class SpeedOverlay : Form
         Top = screen.Bottom - Height - 4;
     }
 
-    public void Update(string down, string up, string ping, bool good)
+    public void Update(string down, string up, string ping, string low, bool good)
     {
         _down = down;
         _up = up;
         _ping = ping;
+        _low = low;
         _good = good;
         Invalidate();
     }
@@ -168,10 +179,14 @@ public class SpeedOverlay : Form
         // "↓ 56.2" on the left
         g.DrawString($"↓{_down}", bigFont, downBrush, 4, 4);
 
-        // "↑ 5.9" and ping on the right side, stacked
+        // "↑ 5.9", ping, and low on the right side, stacked
         var rightX = 85f;
-        g.DrawString($"↑{_up}", smallFont, dimBrush, rightX, 4);
-        g.DrawString($"{_ping}ms", smallFont, dimBrush, rightX, 20);
+        g.DrawString($"↑{_up}", smallFont, dimBrush, rightX, 2);
+        g.DrawString($"{_ping}ms", smallFont, dimBrush, rightX, 16);
+
+        // Low speed at bottom
+        using var redBrush = new SolidBrush(Color.FromArgb(239, 68, 68));
+        g.DrawString($"Low: {_low}", smallFont, redBrush, rightX, 30);
     }
 
     protected override CreateParams CreateParams
