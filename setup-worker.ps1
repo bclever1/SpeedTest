@@ -56,5 +56,5 @@ Start-Service SpeedTestWorker
 Start-Service SpeedTestUpdater
 
 Write-Host ""
-Write-Host "Done! Worker is running and reporting to http://192.168.1.200:5091"
+Write-Host "Done! Worker is running and reporting to http://192.168.1.204:5091"
 Write-Host "Updater is polling git every 60 seconds."
