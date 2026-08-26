@@ -76,13 +76,24 @@ function App() {
     return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   }
 
+  const machineColors: Record<string, string> = {}
+  const palette = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899']
+  const activeMachines = machine
+    ? [machine]
+    : [...new Set(results.map(r => r.machineName))].sort()
+  activeMachines.forEach((m, i) => { machineColors[m] = palette[i % palette.length] })
+
   const chartData = [...results].reverse().map(r => {
     const d = new Date(r.timestamp + 'Z')
-    return {
-      ...r,
+    const row: Record<string, unknown> = {
       label: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
         + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+      timestamp: d.getTime(),
+      machineName: r.machineName,
+      pingMs: r.pingMs,
     }
+    row[`${r.machineName}`] = r.downloadMbps
+    return row
   })
 
   return (
@@ -179,47 +190,42 @@ function App() {
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null
-                  const data = payload[0].payload as TestResult
-                  const pingColor = data.pingMs > 200 ? '#ef4444' : data.pingMs > 100 ? '#f59e0b' : '#94a3b8'
+                  const row = payload[0].payload as Record<string, unknown>
+                  const ping = row.pingMs as number
+                  const pingColor = ping > 200 ? '#ef4444' : ping > 100 ? '#f59e0b' : '#94a3b8'
                   return (
                     <div style={{ backgroundColor: '#131926', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e2e8f0' }}>
                       <div style={{ color: '#94a3b8', marginBottom: 4 }}>{label}</div>
-                      <div><span style={{ color: '#3b82f6' }}>Download:</span> {data.downloadMbps} Mbps</div>
-                      <div><span style={{ color: '#22c55e' }}>Upload:</span> {data.uploadMbps} Mbps</div>
-                      <div><span style={{ color: pingColor }}>Ping: {data.pingMs} ms</span></div>
-                      {!machine && <div style={{ color: '#64748b', marginTop: 4, fontSize: 11 }}>{data.machineName}</div>}
+                      {payload.filter(p => p.value != null).map(p => (
+                        <div key={p.dataKey as string}>
+                          <span style={{ color: p.color }}>{p.dataKey as string}:</span> {p.value} Mbps
+                        </div>
+                      ))}
+                      <div><span style={{ color: pingColor }}>Ping: {ping} ms</span></div>
                     </div>
                   )
                 }}
               />
-              <Legend
-                formatter={(value) =>
-                  value === 'downloadMbps' ? 'Download' : value === 'uploadMbps' ? 'Upload' : value
-                }
-                wrapperStyle={{ fontSize: '13px', color: '#94a3b8' }}
-              />
+              <Legend wrapperStyle={{ fontSize: '13px', color: '#94a3b8' }} />
               <ReferenceLine
                 y={100}
                 stroke="#ef4444"
                 strokeDasharray="6 4"
                 label={{ value: '100 Mbps promised', fill: 'rgba(239,68,68,0.6)', fontSize: 11, position: 'right' }}
               />
-              <Line
-                type="monotone"
-                dataKey="downloadMbps"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={{ fill: '#3b82f6', r: 3 }}
-                activeDot={{ r: 5, stroke: '#60a5fa', strokeWidth: 2 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="uploadMbps"
-                stroke="#22c55e"
-                strokeWidth={2}
-                dot={{ fill: '#22c55e', r: 2 }}
-                activeDot={{ r: 4, stroke: '#4ade80', strokeWidth: 2 }}
-              />
+              {activeMachines.map(m => (
+                <Line
+                  key={m}
+                  type="monotone"
+                  dataKey={m}
+                  name={m}
+                  stroke={machineColors[m]}
+                  strokeWidth={2}
+                  dot={{ fill: machineColors[m], r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
