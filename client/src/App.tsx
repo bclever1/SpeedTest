@@ -220,9 +220,9 @@ function App() {
                   dataKey={m}
                   name={m}
                   stroke={machineColors[m]}
-                  strokeWidth={2}
-                  dot={{ fill: machineColors[m], r: 3 }}
-                  activeDot={{ r: 5 }}
+                  strokeWidth={1.5}
+                  dot={{ fill: machineColors[m], r: 2 }}
+                  activeDot={{ r: 4 }}
                   connectNulls
                 />
               ))}
