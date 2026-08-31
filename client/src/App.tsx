@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
+import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 import './App.css'
 
-const UI_VERSION = '3.0.0'
+const UI_VERSION = '3.1.0'
+
+const OSWEGO_LAT = 41.68
+const OSWEGO_LON = -88.35
 
 interface TestResult {
   id: number
@@ -35,6 +38,28 @@ function App() {
   const [running, setRunning] = useState(false)
   const [machines, setMachines] = useState<string[]>([])
   const [machine, setMachine] = useState('')
+  const [weather, setWeather] = useState<Map<number, number>>(new Map())
+
+  const fetchWeather = useCallback(async () => {
+    const end = new Date()
+    const start = new Date(end.getTime() - days * 86400000)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    try {
+      const res = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${OSWEGO_LAT}&longitude=${OSWEGO_LON}&hourly=precipitation&start_date=${fmt(start)}&end_date=${fmt(end)}&timezone=America%2FChicago`
+      )
+      const data = await res.json()
+      const map = new Map<number, number>()
+      const times: string[] = data.hourly.time
+      const precip: number[] = data.hourly.precipitation
+      times.forEach((t, i) => {
+        map.set(new Date(t).getTime(), precip[i] ?? 0)
+      })
+      setWeather(map)
+    } catch {
+      setWeather(new Map())
+    }
+  }, [days])
 
   const fetchData = useCallback(async () => {
     const params = `days=${days}${machine ? `&machine=${machine}` : ''}`
@@ -52,9 +77,10 @@ function App() {
 
   useEffect(() => {
     fetchData()
+    fetchWeather()
     const interval = setInterval(fetchData, 60000)
     return () => clearInterval(interval)
-  }, [fetchData])
+  }, [fetchData, fetchWeather])
 
   const runManualTest = async () => {
     setRunning(true)
@@ -93,6 +119,9 @@ function App() {
       pingMs: r.pingMs,
     }
     row[`${r.machineName}`] = r.downloadMbps
+    // Snap to nearest hour for weather lookup
+    const hourMs = Math.round(d.getTime() / 3600000) * 3600000
+    row.precipMm = weather.get(hourMs) ?? 0
     return row
   })
 
@@ -172,7 +201,7 @@ function App() {
         <div className="chart-panel">
           <h2>Speed Over Time</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: 50, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis
                 dataKey="label"
@@ -182,10 +211,19 @@ function App() {
                 interval="preserveStartEnd"
               />
               <YAxis
+                yAxisId="speed"
                 tick={{ fill: '#475569', fontSize: 12 }}
                 tickLine={{ stroke: '#1e293b' }}
                 axisLine={{ stroke: '#1e293b' }}
                 unit=" Mbps"
+              />
+              <YAxis
+                yAxisId="rain"
+                orientation="right"
+                tick={{ fill: '#475569', fontSize: 10 }}
+                tickLine={{ stroke: '#1e293b' }}
+                axisLine={{ stroke: '#1e293b' }}
+                unit=" mm"
               />
               <Tooltip
                 content={({ active, payload, label }) => {
@@ -196,26 +234,39 @@ function App() {
                   return (
                     <div style={{ backgroundColor: '#131926', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e2e8f0' }}>
                       <div style={{ color: '#94a3b8', marginBottom: 4 }}>{label}</div>
-                      {payload.filter(p => p.value != null).map(p => (
+                      {payload.filter(p => p.value != null && p.dataKey !== 'precipMm').map(p => (
                         <div key={p.dataKey as string}>
                           <span style={{ color: p.color }}>{p.dataKey as string}:</span> {p.value} Mbps
                         </div>
                       ))}
                       <div><span style={{ color: pingColor }}>Ping: {ping} ms</span></div>
+                      {(row.precipMm as number) > 0 && (
+                        <div><span style={{ color: '#38bdf8' }}>Rain: {row.precipMm as number} mm</span></div>
+                      )}
                     </div>
                   )
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '13px', color: '#94a3b8' }} />
               <ReferenceLine
+                yAxisId="speed"
                 y={100}
                 stroke="#ef4444"
                 strokeDasharray="6 4"
                 label={{ value: '100 Mbps promised', fill: 'rgba(239,68,68,0.6)', fontSize: 11, position: 'right' }}
               />
+              <Bar
+                yAxisId="rain"
+                dataKey="precipMm"
+                name="Rain"
+                fill="rgba(56, 189, 248, 0.25)"
+                stroke="rgba(56, 189, 248, 0.4)"
+                barSize={6}
+              />
               {activeMachines.map(m => (
                 <Line
                   key={m}
+                  yAxisId="speed"
                   type="monotone"
                   dataKey={m}
                   name={m}
@@ -226,7 +277,7 @@ function App() {
                   connectNulls
                 />
               ))}
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
