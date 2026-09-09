@@ -20,7 +20,7 @@ public class SpeedTestWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var interval = TimeSpan.FromMinutes(_config.GetValue("IntervalMinutes", 30));
-        var apiUrl = _config["CentralApiUrl"] ?? "http://192.168.1.200:5091";
+        var apiUrl = _config["CentralApiUrl"] ?? "http://192.168.50.200:5091";
 
         await Task.Delay(TimeSpan.FromSeconds(10), ct);
 

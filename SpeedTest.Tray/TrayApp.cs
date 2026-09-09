@@ -18,8 +18,8 @@ public class TrayApp : ApplicationContext
     {
         _apiUrl = File.Exists("appsettings.json")
             ? JsonDocument.Parse(File.ReadAllText("appsettings.json"))
-                .RootElement.GetProperty("CentralApiUrl").GetString() ?? "http://192.168.1.200:5091"
-            : "http://192.168.1.200:5091";
+                .RootElement.GetProperty("CentralApiUrl").GetString() ?? "http://192.168.50.200:5091"
+            : "http://192.168.50.200:5091";
 
         _tray = new NotifyIcon
         {
