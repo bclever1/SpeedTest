@@ -124,10 +124,23 @@ public class SpeedTestWorker : BackgroundService
         var candidates = new[]
         {
             @"C:\ProgramData\chocolatey\bin\speedtest.exe",
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                @"Microsoft\WinGet\Links\speedtest.exe"),
+            @"C:\Program Files\Ookla\Speedtest\speedtest.exe",
+            @"C:\Program Files (x86)\Ookla\Speedtest\speedtest.exe",
             "/usr/bin/speedtest",
             "/usr/local/bin/speedtest"
         };
-        return candidates.FirstOrDefault(File.Exists);
+        // Check known paths first, then fall back to PATH
+        return candidates.FirstOrDefault(File.Exists)
+            ?? FindInPath("speedtest.exe")
+            ?? FindInPath("speedtest");
+    }
+
+    private static string? FindInPath(string filename)
+    {
+        var pathDirs = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
+        return pathDirs.Select(dir => Path.Combine(dir, filename)).FirstOrDefault(File.Exists);
     }
 }
 
