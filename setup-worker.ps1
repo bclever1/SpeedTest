@@ -1,4 +1,4 @@
-# SpeedTest Worker Setup — run as Administrator on non-central machines
+# SpeedTest Worker Setup -- run as Administrator on non-central machines
 # Prerequisites: Git, .NET 10 SDK, NSSM, Ookla speedtest CLI
 $ErrorActionPreference = "Stop"
 $repoDir = "C:\Development\SpeedTest"
@@ -40,7 +40,7 @@ Write-Host "Installing SpeedTestUpdater service..."
 & $nssm install SpeedTestUpdater "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-ExecutionPolicy Bypass -File `"$repoDir\updater.ps1`""
 & $nssm set SpeedTestUpdater AppDirectory $repoDir
 & $nssm set SpeedTestUpdater DisplayName "SpeedTest Updater"
-& $nssm set SpeedTestUpdater Description "Auto-updater for SpeedTest — polls git every 60s"
+& $nssm set SpeedTestUpdater Description "Auto-updater for SpeedTest -- polls git every 60s"
 & $nssm set SpeedTestUpdater Start SERVICE_AUTO_START
 & $nssm set SpeedTestUpdater AppStdout "$repoDir\logs\updater.log"
 & $nssm set SpeedTestUpdater AppStderr "$repoDir\logs\updater.log"
